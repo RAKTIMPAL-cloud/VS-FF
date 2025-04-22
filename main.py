@@ -12,22 +12,23 @@ st.title("🔐 Oracle HCM Fusion – Person Search")
 
 st.markdown("Search for employees by **PERSON_NUMBER** from a BIP report.")
 
-# --- Step 1: User credentials input ---
-username = st.text_input("Enter Oracle Fusion Username")
-password = st.text_input("Enter Oracle Fusion Password", type="password")
+# --- Step 1: Get input from user ---
+env_url_input = st.text_input("🌐 Oracle Environment URL (e.g. https://iavnqy-test.fa.ocs.oraclecloud.com)")
+username = st.text_input("👤 Oracle Username")
+password = st.text_input("🔑 Oracle Password", type="password")
+search_input = st.text_input("🔍 Search by full or partial PERSON_NUMBER:")
 
-# --- Step 2: Search input ---
-search_input = st.text_input("Enter full or partial PERSON_NUMBER to search:")
+# Proceed only if all required fields are filled
+if env_url_input and username and password:
 
-# Proceed only if credentials are provided
-if username and password:
+    # Construct full SOAP service endpoint URL
+    full_url = env_url_input.rstrip("/") + "/xmlpserver/services/ExternalReportWSSService"
 
     # Encode credentials
     credentials = f"{username}:{password}"
     encoded_credentials = base64.b64encode(credentials.encode("utf-8")).decode("utf-8")
 
-    # SOAP setup
-    url = "https://iavnqy-test.fa.ocs.oraclecloud.com:443/xmlpserver/services/ExternalReportWSSService"
+    # Set headers
     headers = {
         "Content-Type": "application/soap+xml; charset=utf-8",
         "Authorization": f"Basic {encoded_credentials}"
@@ -51,9 +52,9 @@ if username and password:
     """
 
     # Fetch and cache report
-    @st.cache_data(show_spinner="Fetching Oracle HCM Report...")
+    @st.cache_data(show_spinner="📥 Fetching Oracle HCM Report...")
     def fetch_report():
-        response = requests.post(url, data=soap_request, headers=headers)
+        response = requests.post(full_url, data=soap_request, headers=headers)
         if response.status_code == 200:
             root = ET.fromstring(response.content)
             report_bytes_elem = root.find('.//{http://xmlns.oracle.com/oxp/service/PublicReportService}reportBytes')
@@ -70,7 +71,6 @@ if username and password:
         # Check required columns
         if {"PERSON_ID", "PERSON_NUMBER"}.issubset(df.columns):
             if search_input:
-                # Search filter logic
                 filtered_df = df[df["PERSON_NUMBER"].astype(str).str.startswith(search_input.strip())]
                 st.subheader("🔎 Matching Records")
                 if not filtered_df.empty:
@@ -84,4 +84,4 @@ if username and password:
     else:
         st.error("❌ Failed to retrieve or decode report from Oracle.")
 else:
-    st.info("🔐 Please enter your Oracle Fusion credentials above to begin.")
+    st.info("Please enter the Oracle Environment URL, Username, and Password to continue.")
