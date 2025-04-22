@@ -6,15 +6,14 @@ import csv
 import io
 import pandas as pd
 
-# Set Streamlit page config
+# Streamlit config
 st.set_page_config(page_title="Oracle HCM Person Search", layout="centered")
+st.title("🔍 Oracle HCM Fusion – Person Search (By PERSON_NUMBER)")
 
-st.title("🔍 Oracle HCM Fusion – Person Search")
+# Search box
+search_input = st.text_input("Enter full or partial PERSON_NUMBER to search:")
 
-# Text input for user to enter a Person Number
-search_input = st.text_input("Enter Person Number to search:")
-
-# Hide credentials in production!
+# Oracle credentials (store securely using secrets in production)
 username = "kishore.nand@ibm.com"
 password = "welcome123"
 
@@ -22,14 +21,14 @@ password = "welcome123"
 credentials = f"{username}:{password}"
 encoded_credentials = base64.b64encode(credentials.encode("utf-8")).decode("utf-8")
 
-# SOAP API Endpoint and Headers
+# SOAP setup
 url = "https://iavnqy-test.fa.ocs.oraclecloud.com:443/xmlpserver/services/ExternalReportWSSService"
 headers = {
     "Content-Type": "application/soap+xml; charset=utf-8",
     "Authorization": f"Basic {encoded_credentials}"
 }
 
-# SOAP Envelope
+# SOAP request
 soap_request = """
 <soap:Envelope xmlns:soap="http://www.w3.org/2003/05/soap-envelope" xmlns:pub="http://xmlns.oracle.com/oxp/service/PublicReportService">
    <soap:Header/>
@@ -46,7 +45,8 @@ soap_request = """
 </soap:Envelope>
 """
 
-@st.cache_data(show_spinner="Fetching report from Oracle Fusion...")
+# Cached function to fetch and decode report
+@st.cache_data(show_spinner="Fetching Oracle HCM Report...")
 def fetch_report():
     response = requests.post(url, data=soap_request, headers=headers)
     if response.status_code == 200:
@@ -57,24 +57,26 @@ def fetch_report():
             return decoded_csv
     return None
 
-# Fetch and process data
+# Load data
 csv_data = fetch_report()
 if csv_data:
     df = pd.read_csv(io.StringIO(csv_data))
 
-    if "Person Number" in df.columns:
-        # Filter by user input
+    # Check required columns
+    if {"PERSON_ID", "PERSON_NUMBER"}.issubset(df.columns):
+        # If user entered a search string
         if search_input:
-            filtered_df = df[df["Person Number"].astype(str).str.contains(search_input, case=False, na=False)]
-            st.subheader("🔎 Search Results")
+            # Filter PERSON_NUMBER that starts with or equals the search input
+            filtered_df = df[df["PERSON_NUMBER"].astype(str).str.startswith(search_input.strip())]
+            st.subheader("🔎 Matching Records")
             if not filtered_df.empty:
-                st.dataframe(filtered_df)
+                st.dataframe(filtered_df, use_container_width=True)
             else:
-                st.warning("No matching Person Number found.")
+                st.warning("No matching PERSON_NUMBER found.")
         else:
-            st.info("Please enter a Person Number above to search.")
+            st.info("Please enter a full or partial PERSON_NUMBER to begin your search.")
     else:
-        st.error("The report does not contain a 'Person Number' column.")
+        st.error("Expected columns PERSON_ID and PERSON_NUMBER not found in report.")
 else:
-    st.error("Failed to fetch or decode the report.")
+    st.error("Failed to retrieve or decode report from Oracle.")
 
