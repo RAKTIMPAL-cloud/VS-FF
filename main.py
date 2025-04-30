@@ -79,5 +79,7 @@ if env_url_input and username and password and keyword:
             st.error("Expected columns OBJ_TYPE and OBJ_NAME not found in the report output.")
     else:
         st.error("❌ Could not fetch or decode the report.")
+        st.text("Raw Response:")
+        st.code(response.content.decode('utf-8'), language='xml')
 else:
     st.info("Enter Oracle URL, credentials, and keyword to run the IntelliScan search.")
