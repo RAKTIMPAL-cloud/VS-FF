@@ -2,57 +2,63 @@ import streamlit as st
 import requests
 import base64
 import xml.etree.ElementTree as ET
+import pandas as pd
 import csv
 import io
-import pandas as pd
 
-# Streamlit config
-st.set_page_config(page_title="Oracle HCM Person Search", layout="centered")
-st.title("🔐 Oracle HCM Fusion – Person Search")
+# Streamlit UI
+st.set_page_config(page_title="IntelliScan Report Search", layout="centered")
+st.title("🧠 Oracle BIP – IntelliScan Report")
 
-st.markdown("Search for employees by **PERSON_NUMBER** from a BIP report.")
-
-# --- Step 1: Get input from user ---
+# Input fields
 env_url_input = st.text_input("🌐 Oracle Environment URL (e.g. https://iavnqy-test.fa.ocs.oraclecloud.com)")
 username = st.text_input("👤 Oracle Username")
 password = st.text_input("🔑 Oracle Password", type="password")
-search_input = st.text_input("🔍 Search by full or partial PERSON_NUMBER:")
+keyword = st.text_input("🔍 Search IntelliScan using Keyword (p_key_word):")
 
-# Proceed only if all required fields are filled
-if env_url_input and username and password:
+# Validate inputs
+if env_url_input and username and password and keyword:
 
-    # Construct full SOAP service endpoint URL
+    # Build full URL
     full_url = env_url_input.rstrip("/") + "/xmlpserver/services/ExternalReportWSSService"
 
     # Encode credentials
     credentials = f"{username}:{password}"
     encoded_credentials = base64.b64encode(credentials.encode("utf-8")).decode("utf-8")
 
-    # Set headers
+    # Set SOAP headers
     headers = {
         "Content-Type": "application/soap+xml; charset=utf-8",
         "Authorization": f"Basic {encoded_credentials}"
     }
 
-    # SOAP request
-    soap_request = """
+    # Build SOAP payload with parameter
+    soap_request = f"""
     <soap:Envelope xmlns:soap="http://www.w3.org/2003/05/soap-envelope" xmlns:pub="http://xmlns.oracle.com/oxp/service/PublicReportService">
        <soap:Header/>
        <soap:Body>
           <pub:runReport>
              <pub:reportRequest>
+                <pub:reportAbsolutePath>/Custom/Human Capital Management/Sample Reports/INTELLISCAN REPORT.xdo</pub:reportAbsolutePath>
                 <pub:attributeFormat>csv</pub:attributeFormat>
                 <pub:flattenXML>false</pub:flattenXML>
-                <pub:reportAbsolutePath>/Custom/Human Capital Management/Sample Reports/PERSON REPORT.xdo</pub:reportAbsolutePath>
                 <pub:sizeOfDataChunkDownload>-1</pub:sizeOfDataChunkDownload>
+                <pub:parameterNameValues>
+                   <pub:item>
+                      <pub:name>p_key_word</pub:name>
+                      <pub:values>
+                         <pub:item>{keyword}</pub:item>
+                      </pub:values>
+                   </pub:item>
+                </pub:parameterNameValues>
              </pub:reportRequest>
           </pub:runReport>
        </soap:Body>
     </soap:Envelope>
     """
 
-    # Fetch and cache report
-    @st.cache_data(show_spinner="📥 Fetching Oracle HCM Report...")
+    # Fetch report
+    @st.cache_data(show_spinner="📥 Fetching IntelliScan Report...")
     def fetch_report():
         response = requests.post(full_url, data=soap_request, headers=headers)
         if response.status_code == 200:
@@ -63,25 +69,15 @@ if env_url_input and username and password:
                 return decoded_csv
         return None
 
-    # Load data
     csv_data = fetch_report()
     if csv_data:
         df = pd.read_csv(io.StringIO(csv_data))
-
-        # Check required columns
-        if {"PERSON_ID", "PERSON_NUMBER"}.issubset(df.columns):
-            if search_input:
-                filtered_df = df[df["PERSON_NUMBER"].astype(str).str.startswith(search_input.strip())]
-                st.subheader("🔎 Matching Records")
-                if not filtered_df.empty:
-                    st.dataframe(filtered_df, use_container_width=True)
-                else:
-                    st.warning("No matching PERSON_NUMBER found.")
-            else:
-                st.info("Enter a PERSON_NUMBER to begin search.")
+        if {"OBJ_TYPE", "OBJ_NAME"}.issubset(df.columns):
+            st.subheader("📄 IntelliScan Report Results")
+            st.dataframe(df, use_container_width=True)
         else:
-            st.error("Expected columns PERSON_ID and PERSON_NUMBER not found in the report.")
+            st.error("Expected columns OBJ_TYPE and OBJ_NAME not found in the report output.")
     else:
-        st.error("❌ Failed to retrieve or decode report from Oracle.")
+        st.error("❌ Could not fetch or decode the report.")
 else:
-    st.info("Please enter the Oracle Environment URL, Username, and Password to continue.")
+    st.info("Enter Oracle URL, credentials, and keyword to run the IntelliScan search.")
