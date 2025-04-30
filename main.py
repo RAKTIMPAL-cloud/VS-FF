@@ -76,6 +76,12 @@ if st.button("📥 Fetch Report"):
             df = pd.read_csv(StringIO(report_csv))
             df.columns = [col.strip().upper() for col in df.columns]
 
+            # Ensure all expected columns are present
+            expected_columns = ['OBJ_TYPE', 'OBJ_NAME', 'DATA']
+            for col in expected_columns:
+                if col not in df.columns:
+                    df[col] = ""  # Add missing columns with empty data
+
             # Optional filtering
             if search_term:
                 search_upper = search_term.upper()
