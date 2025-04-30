@@ -3,81 +3,93 @@ import requests
 import base64
 import xml.etree.ElementTree as ET
 import pandas as pd
-import csv
-import io
+from io import StringIO
 
-# Streamlit UI
-st.set_page_config(page_title="IntelliScan Report Search", layout="centered")
-st.title("🧠 Oracle BIP – IntelliScan Report")
+st.set_page_config(page_title="INTELLISCAN Report Viewer", layout="wide")
+
+st.title("🔍 INTELLISCAN Report Search App")
 
 # Input fields
-env_url_input = st.text_input("🌐 Oracle Environment URL (e.g. https://iavnqy-test.fa.ocs.oraclecloud.com)")
-username = st.text_input("👤 Oracle Username")
-password = st.text_input("🔑 Oracle Password", type="password")
-keyword = st.text_input("🔍 Search IntelliScan using Keyword (p_key_word):")
+env_url = st.text_input("🌐 Environment URL (e.g. https://iavnqy-test.fa.ocs.oraclecloud.com)", "")
+username = st.text_input("👤 Username", "")
+password = st.text_input("🔑 Password", type="password")
+search_term = st.text_input("🔍 Search by full or partial OBJ_NAME or DATA:")
 
-# Validate inputs
-if env_url_input and username and password and keyword:
+def fetch_report(env_url, username, password):
+    full_url = env_url.rstrip("/") + "/xmlpserver/services/ExternalReportWSSService"
 
-    # Build full URL
-    full_url = env_url_input.rstrip("/") + "/xmlpserver/services/ExternalReportWSSService"
-
-    # Encode credentials
     credentials = f"{username}:{password}"
     encoded_credentials = base64.b64encode(credentials.encode("utf-8")).decode("utf-8")
 
-    # Set SOAP headers
     headers = {
         "Content-Type": "application/soap+xml; charset=utf-8",
         "Authorization": f"Basic {encoded_credentials}"
     }
 
-    # Build SOAP payload with parameter
+    # Static SOAP request for INTELLISCAN report with no parameters
     soap_request = f"""
     <soap:Envelope xmlns:soap="http://www.w3.org/2003/05/soap-envelope" xmlns:pub="http://xmlns.oracle.com/oxp/service/PublicReportService">
        <soap:Header/>
        <soap:Body>
           <pub:runReport>
              <pub:reportRequest>
-                <pub:reportAbsolutePath>/Custom/Human Capital Management/Sample Reports/INTELLISCAN REPORT.xdo</pub:reportAbsolutePath>
                 <pub:attributeFormat>csv</pub:attributeFormat>
                 <pub:flattenXML>false</pub:flattenXML>
+                <pub:reportAbsolutePath>/Custom/Human Capital Management/Sample Reports/INTELLISCAN REPORT.xdo</pub:reportAbsolutePath>
                 <pub:sizeOfDataChunkDownload>-1</pub:sizeOfDataChunkDownload>
-                <pub:parameterNameValues>
-                   <pub:item>
-                      <pub:name>p_key_word</pub:name>
-                      <pub:values>
-                         <pub:item>{keyword}</pub:item>
-                      </pub:values>
-                   </pub:item>
-                </pub:parameterNameValues>
              </pub:reportRequest>
           </pub:runReport>
        </soap:Body>
     </soap:Envelope>
     """
 
-    # Fetch report
-    @st.cache_data(show_spinner="📥 Fetching IntelliScan Report...")
-    def fetch_report():
-        response = requests.post(full_url, data=soap_request, headers=headers)
-        if response.status_code == 200:
+    response = requests.post(full_url, data=soap_request, headers=headers)
+
+    if response.status_code == 200:
+        try:
             root = ET.fromstring(response.content)
             report_bytes_elem = root.find('.//{http://xmlns.oracle.com/oxp/service/PublicReportService}reportBytes')
+
             if report_bytes_elem is not None and report_bytes_elem.text:
-                decoded_csv = base64.b64decode(report_bytes_elem.text).decode("utf-8")
-                return decoded_csv
+                report_decoded = base64.b64decode(report_bytes_elem.text).decode("utf-8")
+                return report_decoded
+            else:
+                st.error("Connected but reportBytes is missing or empty.")
+                st.code(response.content.decode("utf-8"), language="xml")
+                return None
+        except Exception as e:
+            st.error("Error while decoding report:")
+            st.exception(e)
+            return None
+    else:
+        st.error(f"Request failed with status code: {response.status_code}")
+        st.code(response.content.decode("utf-8"), language="xml")
         return None
 
-    csv_data = fetch_report()
-    if csv_data:
-        df = pd.read_csv(io.StringIO(csv_data))
-        if {"OBJ_TYPE", "OBJ_NAME"}.issubset(df.columns):
-            st.subheader("📄 IntelliScan Report Results")
-            st.dataframe(df, use_container_width=True)
+# Run logic
+if st.button("📥 Fetch Report"):
+    if env_url and username and password:
+        report_csv = fetch_report(env_url, username, password)
+
+        if report_csv:
+            # Convert CSV to DataFrame
+            df = pd.read_csv(StringIO(report_csv))
+            df.columns = [col.strip().upper() for col in df.columns]
+
+            # Ensure all expected columns are present
+            expected_columns = ['OBJ_TYPE', 'OBJ_NAME', 'DATA']
+            for col in expected_columns:
+                if col not in df.columns:
+                    df[col] = ""  # Add missing columns with empty data
+
+            # Optional filtering
+            if search_term:
+                search_upper = search_term.upper()
+                df = df[df["OBJ_NAME"].str.upper().str.contains(search_upper) | df["DATA"].str.upper().str.contains(search_upper)]
+
+            st.success(f"✅ Fetched {len(df)} matching records.")
+            st.dataframe(df, use_container_width=True, hide_index=True)  # Hide index column
         else:
-            st.error("Expected columns OBJ_TYPE and OBJ_NAME not found in the report output.")
+            st.warning("❌ Could not fetch or decode the report.")
     else:
-        st.error("❌ Could not fetch or decode the report.")
-else:
-    st.info("Enter Oracle URL, credentials, and keyword to run the IntelliScan search.")
+        st.warning("⚠️ Please fill in all fields before fetching the report.")
