@@ -7,7 +7,7 @@ from io import StringIO
 
 st.set_page_config(page_title="INTELLISCAN Report Viewer", layout="wide")
 
-st.title("🔍 INTELLISCAN Report Search App")
+st.title("🔍 LOOKUP & VALUESET Search App")
 
 # Input fields
 env_url = st.text_input("🌐 Environment URL (e.g. https://iavnqy-test.fa.ocs.oraclecloud.com)", "")
